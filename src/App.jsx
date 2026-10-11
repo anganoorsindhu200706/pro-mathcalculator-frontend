@@ -1,288 +1,321 @@
 import { useState } from "react";
 import "./App.css";
 
+const API = "http://localhost:8080/api/history";
+
 function App() {
   const [display, setDisplay] = useState("");
   const [history, setHistory] = useState([]);
-
   const [birthDate, setBirthDate] = useState("");
-  const [age, setAge] = useState(null);
-
+  const [age, setAge] = useState("");
   const [principal, setPrincipal] = useState("");
   const [rate, setRate] = useState("");
   const [time, setTime] = useState("");
-  const [interest, setInterest] = useState(null);
-
-  const [matrixA, setMatrixA] = useState([
-    ["", ""],
-    ["", ""],
-  ]);
-
-  const [matrixB, setMatrixB] = useState([
-    ["", ""],
-    ["", ""],
-  ]);
-
-  const [matrixResult, setMatrixResult] = useState(null);
-
+  const [interest, setInterest] = useState("");
+  const [matrixA, setMatrixA] = useState([["", ""], ["", ""]]);
+  const [matrixB, setMatrixB] = useState([["", ""], ["", ""]]);
+  const [matrixResult, setMatrixResult] = useState("");
   const [a, setA] = useState("");
   const [b, setB] = useState("");
   const [c, setC] = useState("");
   const [quadraticResult, setQuadraticResult] = useState("");
-
   const [linearA, setLinearA] = useState("");
   const [linearB, setLinearB] = useState("");
   const [linearC, setLinearC] = useState("");
   const [linearD, setLinearD] = useState("");
   const [linearResult, setLinearResult] = useState("");
-
   const [functionInput, setFunctionInput] = useState("");
   const [plotPoints, setPlotPoints] = useState([]);
+  const [plotError, setPlotError] = useState("");
 
-  const calculateAge = () => {
-    if (!birthDate) {
-      setAge(null);
-      return;
+  // Backend history
+  const loadHistory = async () => {
+    try {
+      const response = await fetch(API);
+      if (!response.ok) throw new Error("History request failed");
+      const data = await response.json();
+      setHistory(Array.isArray(data) ? data : []);
+    } catch {
+      alert("Start the Spring Boot backend to load history.");
     }
-
-    const birth = new Date(birthDate);
-    const today = new Date();
-
-    let calculatedAge =
-      today.getFullYear() - birth.getFullYear();
-
-    const monthDifference =
-      today.getMonth() - birth.getMonth();
-
-    if (
-      monthDifference < 0 ||
-      (monthDifference === 0 &&
-        today.getDate() < birth.getDate())
-    ) {
-      calculatedAge--;
-    }
-
-    setAge(calculatedAge);
   };
 
-  const calculateInterest = () => {
-    if (!principal || !rate || !time) {
-      setInterest(null);
-      return;
+  const saveHistory = async (expression, result) => {
+    try {
+      const response = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expression,
+          result: String(result),
+        }),
+      });
+      if (response.ok) {
+        const res = await fetch(API);
+        if (res.ok) {
+          const data = await res.json();
+          setHistory(Array.isArray(data) ? data : []);
+        }
+      }
+    } catch {
+      console.error("History could not be saved.");
     }
-
-    const p = Number(principal);
-    const r = Number(rate);
-    const t = Number(time);
-
-    setInterest((p * r * t) / 100);
   };
 
-  const handleClick = async (value) => {
+  const clearHistory = async () => {
+    try {
+      const response = await fetch(API, { method: "DELETE" });
+      if (!response.ok) throw new Error("Delete failed");
+      setHistory([]);
+    } catch {
+      alert("Could not clear history. Check the backend.");
+    }
+  };
+
+  // Basic calculator
+  const handleClick = (value) => {
     if (value === "C") {
       setDisplay("");
       return;
     }
 
     if (value === "=") {
+      const expression = display.trim();
+
+      if (!expression || !/^[0-9+\-*/().%\s]+$/.test(expression)) {
+        setDisplay("Invalid");
+        return;
+      }
+
       try {
-        const result = Function(
-          `"use strict"; return (${display})`
-        )();
-
-        const resultText = String(result);
-
-        setDisplay(resultText);
-
-        await fetch("http://localhost:8080/api/history", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            expression: display,
-            result: resultText,
-          }),
-        });
-
-        const response = await fetch(
-          "http://localhost:8080/api/history"
-        );
-
-        const data = await response.json();
-        setHistory(data);
+        const result = Function(`"use strict"; return (${expression})`)();
+        if (typeof result !== "number" || !Number.isFinite(result)) {
+          throw new Error("Invalid result");
+        }
+        setDisplay(String(result));
+        saveHistory(expression, result);
       } catch {
         setDisplay("Error");
       }
-
       return;
     }
 
-    setDisplay((previous) => previous + value);
-  };
-
-  const loadHistory = async () => {
-    const response = await fetch(
-      "http://localhost:8080/api/history"
+    setDisplay((previous) =>
+      previous === "Error" || previous === "Invalid"
+        ? value
+        : previous + value
     );
-
-    const data = await response.json();
-    setHistory(data);
   };
 
-  const clearHistory = async () => {
-    await fetch("http://localhost:8080/api/history", {
-      method: "DELETE",
-    });
+  // Age calculator
+  const calculateAge = () => {
+    if (!birthDate) {
+      setAge("Please select your birth date.");
+      return;
+    }
 
-    setHistory([]);
+    const birth = new Date(`${birthDate}T00:00:00`);
+    const today = new Date();
+
+    if (birth > today) {
+      setAge("Birth date cannot be in the future.");
+      return;
+    }
+
+    let years = today.getFullYear() - birth.getFullYear();
+    let months = today.getMonth() - birth.getMonth();
+    let days = today.getDate() - birth.getDate();
+
+    if (days < 0) {
+      months--;
+      days += new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+    }
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    setAge(`${years} years, ${months} months, ${days} days`);
   };
 
-  const updateMatrix = (
-    matrix,
-    setMatrix,
-    row,
-    col,
-    value
-  ) => {
-    const updatedMatrix = matrix.map((r) => [...r]);
-    updatedMatrix[row][col] = value;
-    setMatrix(updatedMatrix);
-  };
+  // Simple interest
+  const calculateInterest = () => {
+    if (
+      principal === "" || rate === "" || time === "" ||
+      ![principal, rate, time].every((v) => Number.isFinite(Number(v))) ||
+      Number(principal) < 0 || Number(rate) < 0 || Number(time) < 0
+    ) {
+      setInterest("Enter valid non-negative values.");
+      return;
+    }
 
-  const addMatrices = () => {
-    const result = matrixA.map((row, i) =>
-      row.map((value, j) =>
-        Number(value) + Number(matrixB[i][j])
-      )
+    const p = Number(principal);
+    const value = (p * Number(rate) * Number(time)) / 100;
+    setInterest(
+      `Simple Interest: ${value.toFixed(2)} | Total Amount: ${(p + value).toFixed(2)}`
     );
-
-    setMatrixResult(result);
   };
 
-  const subtractMatrices = () => {
-    const result = matrixA.map((row, i) =>
-      row.map((value, j) =>
-        Number(value) - Number(matrixB[i][j])
-      )
-    );
-
-    setMatrixResult(result);
+  // Matrix input updater
+  const updateMatrix = (matrix, setter, row, col, value) => {
+    const updated = matrix.map((line) => [...line]);
+    updated[row][col] = value;
+    setter(updated);
   };
 
-  const multiplyMatrices = () => {
-    const result = [
-      [
-        Number(matrixA[0][0]) * Number(matrixB[0][0]) +
-          Number(matrixA[0][1]) * Number(matrixB[1][0]),
+  // 2x2 matrix operations
+  const matrixOperation = (operation) => {
+    if ([...matrixA, ...matrixB].some((row) =>
+      row.some((v) => v === "")
+    )) {
+      setMatrixResult("Please fill all matrix values.");
+      return;
+    }
 
-        Number(matrixA[0][0]) * Number(matrixB[0][1]) +
-          Number(matrixA[0][1]) * Number(matrixB[1][1]),
-      ],
-      [
-        Number(matrixA[1][0]) * Number(matrixB[0][0]) +
-          Number(matrixA[1][1]) * Number(matrixB[1][0]),
+    const A = matrixA.map((row) => row.map(Number));
+    const B = matrixB.map((row) => row.map(Number));
+    let result;
 
-        Number(matrixA[1][0]) * Number(matrixB[0][1]) +
-          Number(matrixA[1][1]) * Number(matrixB[1][1]),
-      ],
-    ];
+    if (operation === "add") {
+      result = A.map((row, i) => row.map((v, j) => v + B[i][j]));
+    } else if (operation === "subtract") {
+      result = A.map((row, i) => row.map((v, j) => v - B[i][j]));
+    } else {
+      result = A.map((row, i) =>
+        row.map((_, j) => A[i][0] * B[0][j] + A[i][1] * B[1][j])
+      );
+    }
 
-    setMatrixResult(result);
+    setMatrixResult(result.map((row) => row.join("   ")).join("\n"));
   };
 
+  // Quadratic equation: ax² + bx + c = 0
   const solveQuadratic = () => {
+    if (a === "" || b === "" || c === "") {
+      setQuadraticResult("Please enter a, b and c.");
+      return;
+    }
+
     const A = Number(a);
     const B = Number(b);
     const C = Number(c);
 
-    if (!a || !b || !c || A === 0) {
-      setQuadraticResult(
-        "Please enter valid values. A cannot be 0."
-      );
+    if (![A, B, C].every(Number.isFinite) || A === 0) {
+      setQuadraticResult("Enter valid values. a cannot be 0.");
       return;
     }
 
-    const discriminant = B * B - 4 * A * C;
+    const d = B * B - 4 * A * C;
 
-    if (discriminant > 0) {
-      const root1 =
-        (-B + Math.sqrt(discriminant)) / (2 * A);
-
-      const root2 =
-        (-B - Math.sqrt(discriminant)) / (2 * A);
-
+    if (d > 0) {
       setQuadraticResult(
-        `x₁ = ${root1.toFixed(2)}, x₂ = ${root2.toFixed(2)}`
+        `Roots: ${((-B + Math.sqrt(d)) / (2 * A)).toFixed(4)}, ${((-B - Math.sqrt(d)) / (2 * A)).toFixed(4)}`
       );
-    } else if (discriminant === 0) {
-      const root = -B / (2 * A);
-
-      setQuadraticResult(`x = ${root.toFixed(2)}`);
+    } else if (d === 0) {
+      setQuadraticResult(`Repeated root: ${(-B / (2 * A)).toFixed(4)}`);
     } else {
-      setQuadraticResult("No real roots");
+      const real = (-B / (2 * A)).toFixed(4);
+      const imaginary = (Math.sqrt(-d) / Math.abs(2 * A)).toFixed(4);
+      setQuadraticResult(`Complex roots: ${real} ± ${imaginary}i`);
     }
   };
 
+  // Linear equation: Ax + B = Cx + D
   const solveLinear = () => {
-    const A = Number(linearA);
-    const B = Number(linearB);
-    const C = Number(linearC);
-    const D = Number(linearD);
+    const values = [linearA, linearB, linearC, linearD];
+
+    if (values.some((v) => v === "")) {
+      setLinearResult("Enter A, B, C and D.");
+      return;
+    }
+
+    const [A, B, C, D] = values.map(Number);
+
+    if (![A, B, C, D].every(Number.isFinite)) {
+      setLinearResult("Enter valid numbers.");
+      return;
+    }
 
     const coefficient = A - C;
     const constant = D - B;
 
-    if (
-      linearA === "" ||
-      linearB === "" ||
-      linearC === "" ||
-      linearD === ""
-    ) {
-      setLinearResult("Please enter all values.");
-      return;
-    }
-
     if (coefficient === 0 && constant === 0) {
-      setLinearResult("Infinite solutions");
-      return;
+      setLinearResult("Infinite solutions.");
+    } else if (coefficient === 0) {
+      setLinearResult("No solution.");
+    } else {
+      setLinearResult(`x = ${(constant / coefficient).toFixed(4)}`);
     }
-
-    if (coefficient === 0) {
-      setLinearResult("No solution");
-      return;
-    }
-
-    const x = constant / coefficient;
-
-    setLinearResult(`x = ${x}`);
   };
 
+  // Convert a math expression into a function for plotting
+  const createFunction = (expression) => {
+    let code = expression.trim().toLowerCase();
+
+    code = code
+      .replace(/\^/g, "**")
+      .replace(/\b(sin|cos|tan|sqrt|abs|log|exp)\(/g, "Math.$1(")
+      .replace(/\bpi\b/g, "Math.PI")
+      .replace(/\be\b/g, "Math.E");
+
+    if (!/^[0-9x+\-*/().,\sA-Za-z]*$/.test(code)) {
+      throw new Error("Invalid characters");
+    }
+
+    return Function("x", `"use strict"; return (${code});`);
+  };
+
+  // Math plotter
   const plotFunction = () => {
+    setPlotError("");
+    setPlotPoints([]);
+
     if (!functionInput.trim()) {
-      setPlotPoints([]);
+      setPlotError("Enter a function, e.g. x*x");
       return;
     }
 
     try {
+      const fn = createFunction(functionInput);
       const points = [];
 
-      for (let x = -10; x <= 10; x += 0.5) {
-        const y = Function(
-          "x",
-          `"use strict"; return (${functionInput})`
-        )(x);
+      for (let x = -10; x <= 10.001; x += 0.1) {
+        const y = fn(x);
 
-        if (Number.isFinite(y)) {
-          points.push({ x, y });
-        }
+        points.push(
+          typeof y === "number" && Number.isFinite(y) && Math.abs(y) <= 100
+            ? { x, y: Math.max(-10, Math.min(10, y)) }
+            : { x, y: null }
+        );
+      }
+
+      if (!points.some((p) => p.y !== null)) {
+        throw new Error("No graph points");
       }
 
       setPlotPoints(points);
     } catch {
-      setPlotPoints([]);
+      setPlotError("Invalid function. Try x*x, x^2 or sin(x).");
     }
   };
+
+  const graphWidth = 420;
+  const graphHeight = 260;
+  const svgX = (x) => ((x + 10) / 20) * graphWidth;
+  const svgY = (y) => ((10 - y) / 20) * graphHeight;
+
+  let graphPath = "";
+  let drawing = false;
+
+  plotPoints.forEach((point) => {
+    if (point.y === null) {
+      drawing = false;
+      return;
+    }
+
+    graphPath += `${drawing ? " L" : " M"} ${svgX(point.x)} ${svgY(point.y)}`;
+    drawing = true;
+  });
 
   const buttons = [
     "7", "8", "9", "/",
@@ -293,349 +326,168 @@ function App() {
   ];
 
   return (
-    <div className="app">
-
-      <div className="calculator">
-
+    <main className="app">
+      <section className="calculator">
         <h1>Pro Math Calculator</h1>
+        <input className="display" value={display || "0"} readOnly />
 
-        <input
-          type="text"
-          value={display}
-          placeholder="0"
-          readOnly
-        />
-
-        <div className="buttons">
+        <div className="keypad">
           {buttons.map((button) => (
             <button
+              type="button"
               key={button}
+              className={button === "=" ? "equals" : ""}
               onClick={() => handleClick(button)}
-              className={button === "=" ? "equal" : ""}
             >
               {button}
             </button>
           ))}
         </div>
 
-        <div className="history">
-
-          <h2>History</h2>
-
-          <button onClick={loadHistory}>
-            Load History
-          </button>
-
-          <button onClick={clearHistory}>
-            Clear History
-          </button>
-
-          {history.map((item) => (
-            <div
-              key={item.id}
-              className="history-item"
-            >
-              <span>{item.expression}</span>
-              <span>= {item.result}</span>
-            </div>
-          ))}
-
+        <h2>History</h2>
+        <div className="history-actions">
+          <button type="button" onClick={loadHistory}>Load History</button>
+          <button type="button" onClick={clearHistory}>Clear History</button>
         </div>
+        <div className="history-list">
+          {history.map((item, i) => (
+            <p key={item.id ?? i}>
+              {item.expression} = {item.result}
+            </p>
+          ))}
+        </div>
+      </section>
 
-      </div>
-
-
-      <div className="age-calculator">
-
-        <h2>Age Calculator</h2>
-
+      <section className="plotter">
+        <h2>Math Plotter</h2>
+        <label htmlFor="functionInput">Enter function using x</label>
         <input
-          type="date"
-          value={birthDate}
-          onChange={(e) =>
-            setBirthDate(e.target.value)
-          }
+          id="functionInput"
+          value={functionInput}
+          onChange={(e) => setFunctionInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && plotFunction()}
+          placeholder="Example: x*x or sin(x)"
         />
+        <button type="button" onClick={plotFunction}>Plot Graph</button>
+        {plotError && <p className="error">{plotError}</p>}
 
-        <button onClick={calculateAge}>
-          Calculate Age
-        </button>
-
-        {age !== null && (
-          <h3>Your Age: {age} years</h3>
+        {plotPoints.length > 0 && (
+          <div className="graph-container">
+            <svg
+              viewBox={`0 0 ${graphWidth} ${graphHeight}`}
+              className="function-graph"
+              role="img"
+              aria-label={`Graph of ${functionInput}`}
+            >
+              {Array.from({ length: 21 }, (_, i) => (
+                <g key={i}>
+                  <line
+                    x1={i * 21}
+                    y1="0"
+                    x2={i * 21}
+                    y2={graphHeight}
+                    stroke="#42445b"
+                  />
+                  <line
+                    x1="0"
+                    y1={i * 13}
+                    x2={graphWidth}
+                    y2={i * 13}
+                    stroke="#42445b"
+                  />
+                </g>
+              ))}
+              <line x1={svgX(0)} y1="0" x2={svgX(0)} y2={graphHeight} stroke="#b4b6ca" />
+              <line x1="0" y1={svgY(0)} x2={graphWidth} y2={svgY(0)} stroke="#b4b6ca" />
+              <path
+                d={graphPath}
+                fill="none"
+                stroke="#48d597"
+                strokeWidth="2.5"
+              />
+            </svg>
+            <p className="graph-caption">X and Y range: −10 to 10</p>
+          </div>
         )}
+      </section>
 
-      </div>
+      <section className="linear-calculator">
+        <h2>Linear Equation Solver</h2>
+        <p>Ax + B = Cx + D</p>
+        <input type="number" placeholder="A" value={linearA} onChange={(e) => setLinearA(e.target.value)} />
+        <input type="number" placeholder="B" value={linearB} onChange={(e) => setLinearB(e.target.value)} />
+        <input type="number" placeholder="C" value={linearC} onChange={(e) => setLinearC(e.target.value)} />
+        <input type="number" placeholder="D" value={linearD} onChange={(e) => setLinearD(e.target.value)} />
+        <button type="button" onClick={solveLinear}>Solve</button>
+        {linearResult && <p className="result">{linearResult}</p>}
+      </section>
 
+      <section className="quadratic-calculator">
+        <h2>Quadratic Solver</h2>
+        <p>ax² + bx + c = 0</p>
+        <input type="number" placeholder="Enter a" value={a} onChange={(e) => setA(e.target.value)} />
+        <input type="number" placeholder="Enter b" value={b} onChange={(e) => setB(e.target.value)} />
+        <input type="number" placeholder="Enter c" value={c} onChange={(e) => setC(e.target.value)} />
+        <button type="button" onClick={solveQuadratic}>Solve</button>
+        {quadraticResult && <p className="result">{quadraticResult}</p>}
+      </section>
 
-      <div className="interest-calculator">
-
-        <h2>Interest Calculator</h2>
-
-        <input
-          type="number"
-          placeholder="Principal Amount"
-          value={principal}
-          onChange={(e) =>
-            setPrincipal(e.target.value)
-          }
-        />
-
-        <input
-          type="number"
-          placeholder="Rate (%)"
-          value={rate}
-          onChange={(e) =>
-            setRate(e.target.value)
-          }
-        />
-
-        <input
-          type="number"
-          placeholder="Time (Years)"
-          value={time}
-          onChange={(e) =>
-            setTime(e.target.value)
-          }
-        />
-
-        <button onClick={calculateInterest}>
-          Calculate Interest
-        </button>
-
-        {interest !== null && (
-          <h3>Interest: ₹{interest}</h3>
-        )}
-
-      </div>
-
-
-      <div className="matrix-calculator">
-
+      <section className="matrix-calculator">
         <h2>Matrix Calculator</h2>
-
         <h3>Matrix A</h3>
-
         <div className="matrix-grid">
           {matrixA.map((row, i) =>
             row.map((value, j) => (
               <input
-                key={`A-${i}-${j}`}
+                key={`a${i}${j}`}
                 type="number"
                 value={value}
-                onChange={(e) =>
-                  updateMatrix(
-                    matrixA,
-                    setMatrixA,
-                    i,
-                    j,
-                    e.target.value
-                  )
-                }
+                aria-label={`Matrix A ${i + 1},${j + 1}`}
+                onChange={(e) => updateMatrix(matrixA, setMatrixA, i, j, e.target.value)}
               />
             ))
           )}
         </div>
-
         <h3>Matrix B</h3>
-
         <div className="matrix-grid">
           {matrixB.map((row, i) =>
             row.map((value, j) => (
               <input
-                key={`B-${i}-${j}`}
+                key={`b${i}${j}`}
                 type="number"
                 value={value}
-                onChange={(e) =>
-                  updateMatrix(
-                    matrixB,
-                    setMatrixB,
-                    i,
-                    j,
-                    e.target.value
-                  )
-                }
+                aria-label={`Matrix B ${i + 1},${j + 1}`}
+                onChange={(e) => updateMatrix(matrixB, setMatrixB, i, j, e.target.value)}
               />
             ))
           )}
         </div>
-
-        <div className="matrix-buttons">
-
-          <button onClick={addMatrices}>
-            A + B
-          </button>
-
-          <button onClick={subtractMatrices}>
-            A - B
-          </button>
-
-          <button onClick={multiplyMatrices}>
-            A × B
-          </button>
-
+        <div className="matrix-actions">
+          <button type="button" onClick={() => matrixOperation("add")}>A + B</button>
+          <button type="button" onClick={() => matrixOperation("subtract")}>A − B</button>
+          <button type="button" onClick={() => matrixOperation("multiply")}>A × B</button>
         </div>
+        {matrixResult && <pre className="result matrix-result">{matrixResult}</pre>}
+      </section>
 
-        {matrixResult && (
-          <div className="matrix-result">
+      <section className="interest-calculator">
+        <h2>Interest Calculator</h2>
+        <p>Simple Interest = (P × R × T) / 100</p>
+        <input type="number" placeholder="Principal amount" value={principal} onChange={(e) => setPrincipal(e.target.value)} />
+        <input type="number" placeholder="Rate (%)" value={rate} onChange={(e) => setRate(e.target.value)} />
+        <input type="number" placeholder="Time (years)" value={time} onChange={(e) => setTime(e.target.value)} />
+        <button type="button" onClick={calculateInterest}>Calculate Interest</button>
+        {interest && <p className="result">{interest}</p>}
+      </section>
 
-            <h3>Result</h3>
-
-            {matrixResult.map((row, i) => (
-              <div key={i}>
-                {row.map((value, j) => (
-                  <span key={j}>
-                    {value}
-                  </span>
-                ))}
-              </div>
-            ))}
-
-          </div>
-        )}
-
-      </div>
-
-
-      <div className="quadratic-calculator">
-
-        <h2>Quadratic Solver</h2>
-
-        <p>Equation: ax² + bx + c = 0</p>
-
-        <input
-          type="number"
-          placeholder="Enter a"
-          value={a}
-          onChange={(e) =>
-            setA(e.target.value)
-          }
-        />
-
-        <input
-          type="number"
-          placeholder="Enter b"
-          value={b}
-          onChange={(e) =>
-            setB(e.target.value)
-          }
-        />
-
-        <input
-          type="number"
-          placeholder="Enter c"
-          value={c}
-          onChange={(e) =>
-            setC(e.target.value)
-          }
-        />
-
-        <button onClick={solveQuadratic}>
-          Solve
-        </button>
-
-        {quadraticResult && (
-          <h3>{quadraticResult}</h3>
-        )}
-
-      </div>
-
-
-      <div className="linear-calculator">
-
-        <h2>Linear Equation Solver</h2>
-
-        <p>Equation: Ax + B = Cx + D</p>
-
-        <input
-          type="number"
-          placeholder="A"
-          value={linearA}
-          onChange={(e) =>
-            setLinearA(e.target.value)
-          }
-        />
-
-        <input
-          type="number"
-          placeholder="B"
-          value={linearB}
-          onChange={(e) =>
-            setLinearB(e.target.value)
-          }
-        />
-
-        <input
-          type="number"
-          placeholder="C"
-          value={linearC}
-          onChange={(e) =>
-            setLinearC(e.target.value)
-          }
-        />
-
-        <input
-          type="number"
-          placeholder="D"
-          value={linearD}
-          onChange={(e) =>
-            setLinearD(e.target.value)
-          }
-        />
-
-        <button onClick={solveLinear}>
-          Solve
-        </button>
-
-        {linearResult && (
-          <h3>{linearResult}</h3>
-        )}
-
-      </div>
-
-
-      <div className="plotter">
-
-        <h2>Math Plotter</h2>
-
-        <p>Enter function using x</p>
-
-        <input
-          type="text"
-          placeholder="Example: x * x"
-          value={functionInput}
-          onChange={(e) =>
-            setFunctionInput(e.target.value)
-          }
-        />
-
-        <button onClick={plotFunction}>
-          Plot Graph
-        </button>
-
-        {plotPoints.length > 0 && (
-          <div className="graph">
-
-            {plotPoints.map((point, index) => (
-              <span
-                key={index}
-                className="point"
-                style={{
-                  left: `${((point.x + 10) / 20) * 100}%`,
-                  bottom: `${Math.max(
-                    5,
-                    Math.min(95, 50 + point.y * 2)
-                  )}%`,
-                }}
-              />
-            ))}
-
-          </div>
-        )}
-
-      </div>
-
-    </div>
+      <section className="age-calculator">
+        <h2>Age Calculator</h2>
+        <label htmlFor="birthDate">Select your birth date</label>
+        <input id="birthDate" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+        <button type="button" onClick={calculateAge}>Calculate Age</button>
+        {age && <p className="result">{age}</p>}
+      </section>
+    </main>
   );
 }
 
